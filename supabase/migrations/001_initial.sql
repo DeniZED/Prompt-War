@@ -172,6 +172,16 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+-- Function to safely increment XP (used by service role)
+create or replace function public.increment_xp(user_id uuid, xp_amount integer)
+returns void as $$
+begin
+  update public.profiles
+  set xp = xp + xp_amount
+  where id = user_id;
+end;
+$$ language plpgsql security definer;
+
 -- Indexes for performance
 create index idx_rooms_code on public.rooms(code);
 create index idx_rooms_status on public.rooms(status);
