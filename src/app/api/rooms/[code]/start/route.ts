@@ -93,7 +93,7 @@ export async function POST(
     return NextResponse.json({ round, theme });
   } catch (error) {
     console.error('Start game error:', error);
-    const message = error instanceof Error ? error.message : 'Erreur inconnue';
-    return NextResponse.json({ error: 'Erreur serveur: ' + message }, { status: 500 });
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: 'v2 – ' + message }, { status: 500 });
   }
 }
