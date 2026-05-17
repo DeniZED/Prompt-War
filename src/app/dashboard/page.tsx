@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -119,7 +121,7 @@ export default function DashboardPage() {
                     style={{ width: `${xpProgress}%` }}
                   />
                 </div>
-                <span className="text-xs text-[#64748b]">{profile?.xp % 500}/500 XP</span>
+                <span className="text-xs text-[#64748b]">{(profile?.xp ?? 0) % 500}/500 XP</span>
               </div>
             </div>
           </div>
