@@ -6,22 +6,25 @@ export async function POST(
   _request: Request,
   { params }: { params: { code: string } }
 ) {
+  const steps: string[] = [];
+
   try {
+    steps.push('start');
     const supabase = createClient();
+    steps.push('supabase_client');
+
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    steps.push('got_user');
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+      return NextResponse.json({ error: 'Non authentifié', steps }, { status: 401 });
     }
 
     const code = params.code.toUpperCase();
-
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('SUPABASE_SERVICE_ROLE_KEY is not set');
-      return NextResponse.json({ error: 'Configuration serveur manquante (SERVICE_ROLE_KEY)' }, { status: 500 });
-    }
+    steps.push('code_' + code);
 
     const serviceClient = createServiceClient();
+    steps.push('service_client');
 
     const { data: room, error: roomError } = await serviceClient
       .from('rooms')
@@ -29,34 +32,41 @@ export async function POST(
       .eq('code', code)
       .single();
 
+    steps.push('room_fetched');
+
     if (roomError || !room) {
-      console.error('Room fetch error:', roomError);
-      return NextResponse.json({ error: 'Salle introuvable' }, { status: 404 });
+      return NextResponse.json({ error: 'Salle introuvable', steps, roomError: roomError?.message }, { status: 404 });
     }
 
     if (room.host_id !== user.id) {
-      return NextResponse.json({ error: "Seul l'hôte peut démarrer" }, { status: 403 });
+      return NextResponse.json({ error: "Seul l'hôte peut démarrer", steps }, { status: 403 });
     }
 
     if (room.status !== 'waiting') {
-      return NextResponse.json({ error: 'Partie déjà en cours' }, { status: 400 });
+      return NextResponse.json({ error: 'Partie déjà en cours: ' + room.status, steps }, { status: 400 });
     }
+
+    steps.push('room_ok');
 
     const { data: players, error: playersError } = await serviceClient
       .from('room_players')
       .select('id')
       .eq('room_id', room.id);
 
+    steps.push('players_fetched_' + (players?.length ?? 'null'));
+
     if (playersError) {
-      console.error('Players fetch error:', playersError);
-      return NextResponse.json({ error: 'Erreur récupération joueurs' }, { status: 500 });
+      return NextResponse.json({ error: 'Erreur joueurs: ' + playersError.message, steps }, { status: 500 });
     }
 
     if (!players || players.length < 1) {
-      return NextResponse.json({ error: 'Aucun joueur dans la salle' }, { status: 400 });
+      return NextResponse.json({ error: 'Aucun joueur', steps }, { status: 400 });
     }
 
+    steps.push('generating_theme');
     const theme = await generateTheme();
+    steps.push('theme_ok');
+
     const phaseEndsAt = new Date(Date.now() + 60_000).toISOString();
 
     const { data: round, error: roundError } = await serviceClient
@@ -70,10 +80,13 @@ export async function POST(
       .select()
       .single();
 
+    steps.push('round_insert');
+
     if (roundError) {
-      console.error('Round insert error:', roundError);
-      return NextResponse.json({ error: 'Erreur création du round: ' + roundError.message }, { status: 500 });
+      return NextResponse.json({ error: 'Round error: ' + roundError.message, steps }, { status: 500 });
     }
+
+    steps.push('round_ok');
 
     const { error: updateError } = await serviceClient
       .from('rooms')
@@ -86,14 +99,12 @@ export async function POST(
       .eq('id', room.id);
 
     if (updateError) {
-      console.error('Room update error:', updateError);
-      return NextResponse.json({ error: 'Erreur démarrage: ' + updateError.message }, { status: 500 });
+      return NextResponse.json({ error: 'Update error: ' + updateError.message, steps }, { status: 500 });
     }
 
-    return NextResponse.json({ round, theme });
+    return NextResponse.json({ round, theme, steps });
   } catch (error) {
-    console.error('Start game error:', error);
     const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: 'v2 – ' + message }, { status: 500 });
+    return NextResponse.json({ error: 'CATCH: ' + message, steps }, { status: 500 });
   }
 }
